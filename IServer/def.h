@@ -1,5 +1,6 @@
 #pragma once
 
+// #define MAX_BUFFER 2048
 #define MAX_BUFFER 4096
 
 typedef struct tagPerloContext

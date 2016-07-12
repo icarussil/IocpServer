@@ -23,6 +23,10 @@ NetworkController::NetworkController(void)
 	m_listenSocket=NULL;
 
 	InitializeCriticalSection(&m_cs);
+
+	m_RecvCount = 0;
+	m_nReceiveDataSize = 0; 
+	m_nFileSize = 0;
 }
 
 NetworkController::~NetworkController(void)
@@ -255,10 +259,7 @@ void NetworkController::ProcessingThread(void)
 			}
 
 			continue;
-
 		}
-
-
 
 		try
 		{
@@ -268,13 +269,16 @@ void NetworkController::ProcessingThread(void)
 				TRACE("Client(%d) Connection Closed.\n",pPerSocketCtx->socket);
 
 				throw "dwBytestransferred==0\n";
-
-
 			}
 
 			// IO 성격에 따라 그에 따른 처리
 			if(pPerIoCtx==pPerSocketCtx->recvContext)
 			{
+				if ( dwBytesTransferred != MAX_BUFFER )
+				{
+					int xxx = 4;
+				}
+
 				// RECV Operation 
 				if(!RecvCompleteEvent(pPerSocketCtx,dwBytesTransferred))	
 				{
@@ -330,7 +334,6 @@ void NetworkController::CloseClient(PPerSocketContext pPerSocketCtx,bool bGracef
 			LingerStruct.l_onoff=1;
 			LingerStruct.l_linger=0;
 			assert(SOCKET_ERROR!=setsockopt(pPerSocketCtx->socket,SOL_SOCKET,SO_LINGER,(char*)&LingerStruct,sizeof(LingerStruct)));
-
 		}
 
 		closesocket(pPerSocketCtx->socket);
@@ -463,32 +466,76 @@ BOOL NetworkController::SendPost(PPerSocketContext pPerSocketCtx)
 	return TRUE;
 }
 
+int NetworkController::GetProtocolType(PPerSocketContext pPerSocketCtx, stProtocol& type)
+{
+	int nRecvSize = pPerSocketCtx->sendContext->wsaBuf.len;
+	if ( nRecvSize < SIZE_HEADER) 
+	{
+		type.nType = -1;
+	}
+	memcpy( &type, pPerSocketCtx->sendContext->Buffer, SIZE_HEADER);
+
+	return type.nType;
+}
+
+
 // 리시브 이벤트 처리 핸들러 함수
 // return 값: TRUE  -> 에러 없이 정상적으로 처리됨
 //            FALSE -> 완료 패킷 처리 동작 중 에러 발생
+// 받은 패킷 수
 BOOL NetworkController::RecvCompleteEvent(PPerSocketContext pPerSocketCtx, DWORD dwBytesTransferred)
 {
-	// Echo 서버 이므로 받은 내용은 그대로 돌려보낸다.
-	//TRACE("GET THIS: %d Bytes -> Return To Client \n",dwBytesTransferred);
-
 #ifdef STATISTICS
 	m_state.IncreaseBytesRead(dwBytesTransferred);
 #endif
+		CString strLog;
+		ZeroMemory(pPerSocketCtx->sendContext->Buffer,sizeof(char)*MAX_BUFFER);
+		CopyMemory(pPerSocketCtx->sendContext->Buffer,pPerSocketCtx->recvContext->Buffer,dwBytesTransferred);
+		pPerSocketCtx->sendContext->wsaBuf.len=dwBytesTransferred;
 
-	ZeroMemory(pPerSocketCtx->sendContext->Buffer,sizeof(char)*MAX_BUFFER);
-	CopyMemory(pPerSocketCtx->sendContext->Buffer,pPerSocketCtx->recvContext->Buffer,dwBytesTransferred);
-	pPerSocketCtx->sendContext->wsaBuf.len=dwBytesTransferred;
+		stProtocol ptType;
+		GetProtocolType(pPerSocketCtx, ptType);
 
-	ZeroMemory(pPerSocketCtx->recvContext->Buffer,sizeof(char)*MAX_BUFFER);
+		if ( SEND_START == ptType.nType )
+		{
+			m_nFileSize = ptType.nFileSize;												// 파일 크기
 
+			CString strFile;
+			strFile.Format("c:\\RecvFile_%s", ptType.szFileName);
 
-	BOOL bRet=SendPost(pPerSocketCtx);
-	if(!bRet)
-		return FALSE;
+			if ( FALSE == m_fileWrite.Open(strFile, CFile::modeCreate|CFile::modeWrite) )
+			{
+				strLog.Format("파일 생성 실패 : %s", strFile);
+				m_pDlg->SendMessage(WM_USER+1000, (WPARAM)&strLog);
+				return FALSE;
+			}
 
-	bRet=RecvPost(pPerSocketCtx);
-	if(!bRet)
-		return FALSE;
+			m_fileWrite.Write(&pPerSocketCtx->recvContext->Buffer[SIZE_HEADER], dwBytesTransferred - SIZE_HEADER);
+
+			m_nReceiveDataSize = dwBytesTransferred - SIZE_HEADER;
+		}
+		else
+		{
+			m_fileWrite.Write(pPerSocketCtx->recvContext->Buffer, dwBytesTransferred);
+
+			m_nReceiveDataSize += dwBytesTransferred;
+		}
+
+		if ( m_nFileSize == m_nReceiveDataSize )
+		{
+			m_fileWrite.Close();
+			m_nReceiveDataSize = 0;
+		}
+				
+		ZeroMemory(pPerSocketCtx->recvContext->Buffer,sizeof(char)*MAX_BUFFER);
+
+		BOOL bRet=SendPost(pPerSocketCtx);
+		if(!bRet)
+			return FALSE;
+
+		bRet=RecvPost(pPerSocketCtx);
+		if(!bRet)
+			return FALSE;
 
 	return TRUE;
 }
@@ -532,3 +579,7 @@ void NetworkController::ServerClose(void)
 	TRACE("Server Close!\n");;
 }
 
+void NetworkController::SetDlg(CDialog *pDlg)
+{
+	m_pDlg = pDlg;
+}

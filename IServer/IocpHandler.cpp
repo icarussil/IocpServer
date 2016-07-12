@@ -105,7 +105,7 @@ BOOL IocpHandler::GetCompletionStatus(ULONG_PTR* pOutCompletionkey, LPDWORD pdwO
 	{
 		*pnOutErrCode = GetLastError();
 	}
-
+	
 	return ret;
 }
 

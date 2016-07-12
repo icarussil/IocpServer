@@ -6,6 +6,8 @@
 #include "afxwin.h"
 #include "NetworkController.h"
 
+#define WM_USER_LOG WM_USER+1000 
+
 // CIServerDlg 대화 상자
 class CIServerDlg : public CDialogEx
 {
@@ -18,8 +20,7 @@ public:
 
 	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV 지원입니다.
-
-
+	
 // 구현입니다.
 protected:
 	HICON m_hIcon;
@@ -30,10 +31,15 @@ protected:
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
 	DECLARE_MESSAGE_MAP()
+	virtual BOOL DestroyWindow();
+	afx_msg LRESULT OnMessage(WPARAM wp, LPARAM lp);
+
 public:
 	afx_msg void OnBnClickedButtonStartServer();
 	afx_msg void OnBnClickedButtonStopServer();
 	CListBox m_listLog;
 
 	NetworkController m_nc;
+
+	BOOL m_bStart;
 };

@@ -8,6 +8,8 @@
 #include "afxdialogex.h"
 
 
+CIServerDlg  *g_pDlg;
+
 #include "Statistcs.h"
 
 
@@ -50,8 +52,6 @@ END_MESSAGE_MAP()
 // CIServerDlg 대화 상자
 
 
-
-
 CIServerDlg::CIServerDlg(CWnd* pParent /*=NULL*/)
 	: CDialogEx(CIServerDlg::IDD, pParent)
 {
@@ -67,7 +67,9 @@ void CIServerDlg::DoDataExchange(CDataExchange* pDX)
 BEGIN_MESSAGE_MAP(CIServerDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
+	ON_WM_DESTROY()
 	ON_WM_QUERYDRAGICON()
+	ON_MESSAGE(WM_USER_LOG,  &CIServerDlg::OnMessage)
 	ON_BN_CLICKED(IDC_BUTTON_START_SERVER, &CIServerDlg::OnBnClickedButtonStartServer)
 	ON_BN_CLICKED(IDC_BUTTON_STOP_SERVER, &CIServerDlg::OnBnClickedButtonStopServer)
 END_MESSAGE_MAP()
@@ -105,6 +107,9 @@ BOOL CIServerDlg::OnInitDialog()
 	SetIcon(m_hIcon, FALSE);		// 작은 아이콘을 설정합니다.
 
 	// TODO: 여기에 추가 초기화 작업을 추가합니다.
+	// OnBnClickedButtonStartServer();
+
+	g_pDlg = this;
 
 	return TRUE;  // 포커스를 컨트롤에 설정하지 않으면 TRUE를 반환합니다.
 }
@@ -151,11 +156,13 @@ void CIServerDlg::OnPaint()
 	}
 }
 
-
+// UINT __stdcall ServerStart(PVOID param)
 DWORD __stdcall ServerStart(PVOID param)
 {
 	NetworkController* pNc = (NetworkController*)param;
 
+	g_pDlg->m_listLog.AddString("============== Start Server =============");
+		
 	pNc->Init();
 	pNc->AcceptProcess();
 
@@ -172,12 +179,50 @@ HCURSOR CIServerDlg::OnQueryDragIcon()
 
 void CIServerDlg::OnBnClickedButtonStartServer()
 {
+	m_nc.SetDlg(this);
 	DWORD dwThreadId=0;
 	HANDLE hThread=CreateThread(NULL,0,ServerStart,&m_nc,0,&dwThreadId);
+	// HANDLE hThread = (HANDLE)_beginthreadex(NULL,0,ServerStart, this,0,0);
+	// if ( hThread == NULL ) return;
+	
 	CloseHandle(hThread);
+
+	GetDlgItem(IDC_BUTTON_START_SERVER)->EnableWindow(FALSE);
+	GetDlgItem(IDC_BUTTON_STOP_SERVER)->EnableWindow(TRUE);
+	
+	m_bStart = TRUE;
 }
 
 void CIServerDlg::OnBnClickedButtonStopServer()
 {
+	g_pDlg->m_listLog.AddString("============== Stop Server =============");
 	m_nc.ServerClose();
+
+	GetDlgItem(IDC_BUTTON_START_SERVER)->EnableWindow(TRUE);
+	GetDlgItem(IDC_BUTTON_STOP_SERVER)->EnableWindow(FALSE);
+
+	m_bStart = FALSE;
+}
+
+BOOL CIServerDlg::DestroyWindow()
+{
+	// TODO: 여기에 특수화된 코드를 추가 및/또는 기본 클래스를 호출합니다.
+
+	if ( m_bStart == TRUE )
+	{
+		m_nc.ServerClose();
+	}
+	
+	return CDialogEx::DestroyWindow();
+}
+
+LRESULT CIServerDlg::OnMessage(WPARAM wp, LPARAM lp)
+{
+	CString* str = (CString*)wp;
+	CString strMsg;
+	strMsg.Format("%s", *str );
+
+	m_listLog.AddString( strMsg );
+
+	return 01;
 }
